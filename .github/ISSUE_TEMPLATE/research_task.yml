@@ -1,0 +1,54 @@
+name: Research Task
+description: Investigate a topic or technology
+labels: ["research"]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Research Topic
+      description: What are you investigating?
+      placeholder: "e.g., Evaluate vector database options"
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What do you want to learn or determine?
+      placeholder: |
+        The goal of this research is to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: method
+    attributes:
+      label: Method
+      description: How will you approach this investigation?
+      placeholder: |
+        1. Review documentation for...
+        2. Build prototype to test...
+        3. Compare options based on...
+    validations:
+      required: true
+
+  - type: textarea
+    id: success_criteria
+    attributes:
+      label: Success Criteria
+      description: How will you know the research is complete?
+      placeholder: |
+        - [ ] Key question 1 answered
+        - [ ] Key question 2 answered
+        - [ ] Recommendation documented
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Starting points, links, or prior work
+    validations:
+      required: false

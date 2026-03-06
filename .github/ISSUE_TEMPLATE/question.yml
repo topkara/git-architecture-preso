@@ -1,0 +1,47 @@
+name: Question
+description: Ask a question or request guidance
+labels: ["question-for-umut"]
+assignees:
+  - "topkara"
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Question
+      description: What do you need help with?
+      placeholder: "e.g., How should authentication be handled?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Background information to help answer the question
+      placeholder: |
+        I'm working on... and need to know...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: Urgency
+      description: How soon do you need an answer?
+      options:
+        - "Blocking - can't proceed without answer"
+        - "Soon - needed within a day or two"
+        - "Low - whenever you get a chance"
+    validations:
+      required: true
+
+  - type: textarea
+    id: options
+    attributes:
+      label: Options Considered
+      description: What approaches have you already thought about?
+      placeholder: |
+        Option A: ...
+        Option B: ...
+    validations:
+      required: false

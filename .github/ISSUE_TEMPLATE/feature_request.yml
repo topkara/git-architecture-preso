@@ -1,0 +1,48 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+labels: ["implementation"]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Feature Summary
+      description: A brief summary of the feature
+      placeholder: "e.g., Add dark mode support"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What feature would you like and why?
+      placeholder: |
+        **What:**
+        Describe the feature...
+
+        **Why:**
+        Why is this needed? What problem does it solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: approach
+    attributes:
+      label: Suggested Approach
+      description: How might this be implemented? (Optional)
+      placeholder: |
+        - Step 1...
+        - Step 2...
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: How will we know this feature is complete?
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+    validations:
+      required: false
