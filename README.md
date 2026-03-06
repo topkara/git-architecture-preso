@@ -1,53 +1,76 @@
 # git-architecture-preso
 
-**Description:** A short description of the project
+**Interactive architecture presentations powered by live git context.**
 
-**Type:** research
-
-**Project Board:** https://github.com/users/topkara/projects/5
+Iteration-1 prototype — a React presentation app that renders architecture diagrams,
+API schemas, source code and a simulated Claude design-discussion sidebar, all driven
+by metadata pulled from the current git repository.
 
 ---
 
-## Overview
+## Features
 
-[Add project overview here]
+| Feature | Implementation |
+|---------|----------------|
+| Slide-based navigation | Arrow keys, Space, PageUp/PageDown, or dot-picker nav bar |
+| Architecture diagrams | Mermaid (flowchart + sequence) |
+| Interactive service graph | React Flow (drag & pan nodes) |
+| OpenAPI schema viewer | Visual explorer + raw JSON toggle |
+| Source code | Syntax-highlighted via react-syntax-highlighter |
+| Design chat | Simulated Claude sidebar with starter prompts |
+| Git context | Branch, commit history, last-commit banner on cover |
 
-## Setup
+## Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/topkara/git-architecture-preso.git
-cd git-architecture-preso
-
-# Install dependencies (if applicable)
-# npm install
-# pip install -r requirements.txt
+cd src
+npm install
+npm run dev
+# Open http://localhost:5173
 ```
 
-## Usage
+## Build
 
-[Add usage instructions here]
+```bash
+cd src
+npm run build      # outputs to src/dist/
+npm run preview    # preview production build
+```
 
-## Structure
+## Project Structure
 
 ```
 git-architecture-preso/
-├── src/           # Source code
-├── docs/          # Documentation
-├── tests/         # Tests
-├── scripts/       # Utility scripts
-└── .github/       # GitHub workflows and templates
+├── src/                    # Vite + React app
+│   ├── src/
+│   │   ├── slides/         # Slide definitions (slideData.js)
+│   │   ├── components/     # MermaidDiagram, FlowDiagram, CodeBlock,
+│   │   │                   # SchemaViewer, ChatSidebar, NavBar, SlideRenderer
+│   │   ├── store/          # Zustand presentation state
+│   │   ├── utils/          # gitContext.js (mock → swap for real API)
+│   │   ├── App.jsx
+│   │   └── App.css
+│   ├── index.html
+│   └── vite.config.js
+├── docs/
+├── tests/
+└── scripts/
 ```
 
-## Contributing
+## Extending
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+### Add a slide
+Edit `src/src/slides/slideData.js` — push a new entry with one of:
+`cover | mermaid | flow | code | schema | commits | markdown`
 
-## License
+### Connect to a real git repo
+Replace the mock in `src/src/utils/gitContext.js` with a call to a local
+Express/FastAPI server that shells out to `git log`, reads your `openapi.yaml`, etc.
 
-MIT License - see [LICENSE](LICENSE) for details.
+### Real Claude chat
+Swap the canned-response logic in `src/src/components/ChatSidebar.jsx`
+with a call to the Anthropic Messages API (Claude 3.5 Sonnet recommended).
 
 ---
 
-**Author:** Umut Topkara  
-**Year:** 2026
+**Author:** Umut Topkara · **Year:** 2026 · **Iteration:** 1
