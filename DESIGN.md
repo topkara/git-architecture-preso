@@ -518,3 +518,123 @@ npx git-arch-preso validate
 | **P3 — AI Context** | MCP filesystem server, context injection, suggested questions, git blame |
 | **P4 — Polish** | Themes, static export, speaker notes, SlideOutline thumbnails |
 | **P5 — Advanced** | External MCP mode, collaboration/session save, audience mode |
+
+---
+
+## 15. Framework Evaluation: reveal.js vs. Custom React
+
+> **Decision**: Retain the custom React approach. This section documents the analysis.
+
+### 15.1 What reveal.js Offers
+
+[reveal.js](https://revealjs.com) is the dominant HTML/CSS/JS presentation framework. Its strengths:
+
+- Polished slide transitions (fade, slide, zoom, cube)
+- Built-in speaker notes window (press `S`)
+- PDF export via `?print-pdf` query param
+- Vertical slide stacks (section/chapter grouping)
+- Plugin ecosystem: `RevealHighlight` (highlight.js), `RevealMarkdown`, `RevealSearch`, `RevealMath`
+- Widely understood by engineers; battle-tested
+- Themes out of the box (black, white, moon, sky, etc.)
+
+### 15.2 Axis 1: Code and API Browsing
+
+This is where the mismatch with reveal.js is most severe.
+
+#### reveal.js Cons for Code/API Browsing
+
+| Problem | Detail |
+|---------|--------|
+| **Fixed-viewport slides** | reveal.js enforces a fixed slide canvas (default 960×700 or 1280×720). Long source files, deep OpenAPI specs, and tall dependency graphs spill outside the viewport. Workarounds (overflow scroll, scale transforms) fight the framework and produce poor UX. |
+| **highlight.js vs. Shiki** | The `RevealHighlight` plugin uses highlight.js, which has noticeably weaker grammar accuracy than Shiki (especially for TypeScript, JSX, and edge cases). The planned Shiki integration (VS Code grammar parity) cannot be dropped into reveal.js without a custom plugin of significant complexity. |
+| **No file-loading abstraction** | reveal.js content is written as `<section>` HTML. Dynamically fetching file content from `/api/files/:path`, applying line-range highlights, and switching tabs between multiple files all require bespoke JavaScript that lives outside reveal.js's model — at which point reveal.js is just a div wrapper. |
+| **swagger-ui-react incompatibility** | Swagger UI is a React component that expects a full React tree. Mounting it inside a reveal.js `<section>` requires a manual `ReactDOM.createRoot` call per slide — a fragile, non-idiomatic pattern that breaks React Fast Refresh and complicates state management. |
+| **React Flow incompatibility** | Same problem: `@xyflow/react` is a React-specific library with its own context providers. Embedding it in reveal.js slides requires the same awkward manual mount pattern and produces z-index and event-bubbling conflicts with reveal.js's own overlay system. |
+| **Multi-file tabs** | A `component` slide showing 3 source files with tabs has no reveal.js analog. Implementing it requires writing the tab component, state, and keyboard handling from scratch — which is exactly what the custom React approach already provides naturally. |
+| **"Explain this code" button** | The design requires a button on highlighted code that injects the selection into the chat sidebar. In reveal.js, this cross-cutting integration (code view → sidebar state) requires a global event bus or shared module, whereas in React it is a single `usePresentationStore` call. |
+
+#### reveal.js Pros for Code/API Browsing (limited)
+
+- `RevealHighlight` handles simple code blocks with step-by-step line focus (`data-line-numbers="1-3|5-7"`) — useful for tutorial-style code walkthroughs but insufficient for the interactive code viewer this tool requires.
+
+#### Custom React Wins Here
+
+The custom approach treats each slide as a full React component. `CodeView` can implement scrollable code with file tabs, git blame gutter, line-range selection, Shiki themes, and diff mode — all using standard React patterns. `OpenAPIView` and `ReactFlowView` embed naturally because they are already React components. There is no friction.
+
+---
+
+### 15.3 Axis 2: LLM Interaction Loop (Chat Sidebar)
+
+The chat sidebar is a persistent, always-visible UI panel that:
+1. Receives the current slide's full context (type, files, schema, diagram source) automatically
+2. Streams Claude responses (SSE) with incremental markdown rendering
+3. Shows suggested questions that change per slide
+4. Optionally triggers MCP tool calls (Claude reads files mid-conversation)
+5. Can be toggled open/closed without losing conversation state
+
+#### reveal.js Cons for Chat Sidebar
+
+| Problem | Detail |
+|---------|--------|
+| **Full-screen layout conflict** | reveal.js takes over the entire viewport (`position: fixed; top: 0; left: 0; width: 100%; height: 100%`). A persistent 380px sidebar requires overriding `.reveal` CSS to apply a `margin-right` and constraining the slide canvas — effectively fighting the framework's core layout model on every render. |
+| **Full-screen mode breaks sidebar** | reveal.js's built-in fullscreen (`F` key) calls the browser's Fullscreen API on the root element, which clips the sidebar entirely. The sidebar would need to be re-parented or the fullscreen feature disabled. |
+| **Context injection requires event hooks** | The sidebar needs the current slide's content to build the Claude system prompt. In reveal.js this requires subscribing to the `slidechanged` event and then imperatively reading slide DOM content — a fragile extraction that breaks when slide content is dynamically loaded. In React, current slide content is always in the Zustand store, available synchronously. |
+| **Streaming SSE + React state** | The streaming response rendering (incremental markdown) requires React state updates (`useState` + `useEffect`). Inside reveal.js, this code either lives in a manually mounted React island (awkward) or must be rewritten with vanilla DOM manipulation (expensive and brittle). |
+| **Suggested questions per slide** | Questions change when the slide changes. In React, a `useEffect` on `currentSlide` handles this trivially. In reveal.js, it requires an event listener on `slidechanged` plus imperative DOM manipulation to swap question chips. |
+| **MCP tool-use rendering** | When Claude calls `read_file` mid-conversation, the UI should show a "Reading `src/auth/middleware.ts`…" indicator. In React this is a message with a `type: 'tool-call'` field rendered by a component switch. In reveal.js it is custom DOM manipulation. |
+
+#### reveal.js Pros for Chat Sidebar (none meaningful)
+
+reveal.js has no sidebar concept and no LLM integration. Every aspect of the chat loop is custom code regardless of the presentation framework — but in reveal.js that custom code must interop with the framework via events and DOM manipulation, whereas in React it integrates naturally.
+
+#### Custom React Wins Here
+
+The persistent sidebar is a first-class layout concern. The flexbox layout (`slide canvas | chat sidebar`) is 10 lines of CSS. Zustand makes slide context universally available. SSE streaming, suggested question generation, and MCP tool-call rendering are all straightforward React patterns with no framework friction.
+
+---
+
+### 15.4 Where reveal.js Would Win
+
+To be fair: if this tool's primary concern were **slide aesthetics and transition quality**, reveal.js would be superior.
+
+| Use Case | reveal.js advantage |
+|----------|-------------------|
+| Polished transitions (cube, zoom, convex) | Built-in, GPU-accelerated |
+| PDF/print export | First-class `?print-pdf` support |
+| Speaker notes window | Built-in dual-display support |
+| Non-technical audiences | Themes and visual polish out of the box |
+| Zero-JS slide authors | Markdown plugin; no code required |
+
+None of these are primary goals for **git-architecture-preso**, which targets engineers running a local dev server to navigate their own codebase. Slide transitions are a distraction; correctness and interactivity of the code/diagram/API views are what matter.
+
+---
+
+### 15.5 Hybrid Option (Considered and Rejected)
+
+One could use reveal.js for slide navigation while mounting React components inside `<section>` elements. This was evaluated and rejected because:
+
+1. **Two React roots**: Each `<section>` that needs React (CodeView, OpenAPIView, FlowView) requires a separate `ReactDOM.createRoot`. There is no shared context, no shared Zustand store instance without workarounds, and React DevTools become confusing.
+2. **No HMR cohesion**: Vite's HMR works cleanly with a single React root. Multiple manual roots defeat this.
+3. **Event conflicts**: reveal.js captures keyboard events (arrows, space, F, S, etc.); React keyboard handlers inside slides must call `stopPropagation` carefully. This is especially fraught for the chat sidebar's Shift+Enter vs. Enter handling.
+4. **Net complexity**: The hybrid adds reveal.js's complexity on top of React's complexity without gaining enough to justify it.
+
+---
+
+### 15.6 Summary
+
+| Criterion | reveal.js | Custom React |
+|-----------|-----------|--------------|
+| Slide transition quality | ✅ Excellent | ⚠️ Manual (CSS only) |
+| PDF export | ✅ Built-in | ⚠️ Custom (P4) |
+| Speaker notes | ✅ Built-in | ⚠️ Custom (P4) |
+| Fixed-viewport enforcement | ❌ Hostile to scrollable code | ✅ Full layout control |
+| Code view (Shiki, tabs, blame) | ❌ highlight.js only; no tabs | ✅ Native React components |
+| OpenAPI viewer | ❌ Requires awkward React mount | ✅ swagger-ui-react natively |
+| Interactive dependency graph | ❌ React Flow mount conflicts | ✅ @xyflow/react natively |
+| Persistent chat sidebar | ❌ Fights full-screen layout | ✅ First-class flexbox layout |
+| Slide context → Claude prompt | ❌ Event hooks, DOM extraction | ✅ Zustand store, synchronous |
+| SSE streaming in sidebar | ❌ Vanilla DOM or React island | ✅ useState/useEffect |
+| MCP tool-call rendering | ❌ Custom DOM manipulation | ✅ React component switch |
+| Keyboard shortcut coexistence | ❌ Event capture conflicts | ✅ Single handler hierarchy |
+
+**Verdict**: reveal.js is the right tool for visual slide decks. It is the wrong tool for an interactive engineering workbench where the "slides" are code viewers, API explorers, and interactive graphs anchored by a persistent LLM chat loop. The custom React SPA is the correct architectural choice and should be retained.
