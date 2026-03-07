@@ -24,23 +24,21 @@ export function gitRouter(repoPath) {
         })
       }
 
+      // Use simple-git's structured log API (no custom format)
       const [branch, log, status] = await Promise.all([
         git.revparse(['--abbrev-ref', 'HEAD']).catch(() => 'unknown'),
-        git.log(['--max-count=10', '--format=%H|%an|%ae|%ar|%s']).catch(() => ({ all: [] })),
+        git.log({ maxCount: 10 }).catch(() => ({ all: [] })),
         git.status().catch(() => ({ isClean: () => true, files: [] })),
       ])
 
-      const recentCommits = (log.all || []).map((c) => {
-        const [hash, author, email, date, ...msgParts] = c.hash.split('|')
-        return {
-          hash: hash?.slice(0, 8),
-          fullHash: hash,
-          author,
-          email,
-          date,
-          message: msgParts.join('|'),
-        }
-      })
+      const recentCommits = (log.all || []).map((c) => ({
+        hash: c.hash?.slice(0, 8),
+        fullHash: c.hash,
+        author: c.author_name,
+        email: c.author_email,
+        date: c.date,
+        message: c.message,
+      }))
 
       const lastCommit = recentCommits[0] || null
 
