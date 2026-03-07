@@ -1,0 +1,179 @@
+title: "git-architecture-preso"
+author: "Phase 1 Review"
+theme: default
+
+slides:
+  - id: cover
+    type: cover
+    title: "git-architecture-preso"
+    subtitle: "A git-native interactive presentation tool for software architects"
+    meta: "Phase 1 Implementation — Shiki + Express + GLM 4.7"
+    notes: "Welcome to the tool reviewing its own codebase."
+
+  - id: system-architecture
+    type: mermaid
+    title: "System Architecture"
+    notes: "The tool has a three-layer architecture: CLI orchestrator, Express API backend, and Vite+React frontend."
+    diagram: |
+      graph TD
+        subgraph CLI["CLI — bin/preso.js"]
+          CMD["preso serve [path]"]
+        end
+
+        subgraph Server["Express API Server :3001"]
+          S1["GET /api/slides"]
+          S2["GET /api/files/:path"]
+          S3["GET /api/git"]
+          S4["POST /api/chat → SSE"]
+          MAN["server/manifest.js"]
+        end
+
+        subgraph Frontend["React SPA — Vite :5173"]
+          APP["App.jsx"]
+          SLIDE["SlideRenderer"]
+          CODE["CodeView (Shiki)"]
+          MER["MermaidView"]
+          CHAT["ChatSidebar"]
+          NAV["NavBar"]
+          STORE["Zustand Store"]
+        end
+
+        subgraph LLM["Local LLM"]
+          GLM["GLM 4.7 Flash — :8081/v1"]
+        end
+
+        CMD -->|"spawn Vite"| Frontend
+        CMD -->|"startServer()"| Server
+        Frontend -->|"/api/* proxy"| Server
+        S1 --> MAN
+        S4 -->|"stream"| GLM
+        APP --> NAV
+        APP --> SLIDE
+        APP --> CHAT
+        SLIDE --> CODE
+        SLIDE --> MER
+        CHAT -->|"POST /api/chat"| S4
+        APP -->|"Zustand"| STORE
+
+  - id: manifest-spec
+    type: mermaid
+    title: "Manifest Data Flow"
+    notes: "The .preso/manifest.yaml file is the single source of truth for slide content."
+    diagram: |
+      sequenceDiagram
+        participant CLI as preso serve
+        participant EX as Express :3001
+        participant MAN as manifest.js
+        participant FS as File System
+        participant UI as React UI
+
+        CLI->>EX: startServer(repoPath)
+        UI->>EX: GET /api/slides
+        EX->>MAN: parseManifest(repoPath)
+        MAN->>FS: read .preso/manifest.yaml
+        FS-->>MAN: YAML content
+        MAN->>FS: read slide source files
+        FS-->>MAN: file contents
+        MAN-->>EX: resolved manifest + fileContents
+        EX-->>UI: JSON {title, slides[]}
+        UI->>UI: render slides
+
+  - id: manifest-format
+    type: component
+    title: "Manifest Format"
+    files:
+      - .preso/manifest.yaml
+    notes: "This is the manifest file you are currently viewing — the tool presenting itself."
+
+  - id: server-index
+    type: component
+    title: "Express Server"
+    files:
+      - server/index.js
+      - server/manifest.js
+    notes: "The Express server creates route handlers and exposes the API. The manifest parser validates and resolves all slide content."
+
+  - id: chat-route
+    type: component
+    title: "Chat API — LLM Proxy"
+    files:
+      - server/routes/chat.js
+    notes: "The chat route proxies streaming SSE from the local GLM 4.7 model to the browser. Slide context is injected as a system prompt."
+
+  - id: codeview
+    type: component
+    title: "CodeView — Shiki Highlighting"
+    files:
+      - src/src/components/CodeView.jsx
+    notes: "CodeView uses Shiki for server-side-quality syntax highlighting in the browser. Supports multi-file tabs and line highlighting."
+
+  - id: chat-sidebar
+    type: component
+    title: "Chat Sidebar — Streaming UI"
+    files:
+      - src/src/components/ChatSidebar.jsx
+    notes: "The chat sidebar streams responses from the local LLM using the Fetch ReadableStream API, rendering tokens as they arrive."
+
+  - id: chat-flow
+    type: mermaid
+    title: "Chat Streaming Flow"
+    notes: "Tokens stream from GLM 4.7 through Express to the browser using SSE, with Zustand updateLastMessage appending each chunk."
+    diagram: |
+      sequenceDiagram
+        participant U as User
+        participant CB as ChatSidebar
+        participant EX as Express /api/chat
+        participant GLM as GLM 4.7 :8081
+
+        U->>CB: Type + Submit
+        CB->>CB: addMessage('user', msg)
+        CB->>CB: addMessage('assistant', '')
+        CB->>EX: POST {messages, slide_context}
+        EX->>GLM: POST /v1/chat/completions {stream:true}
+        loop SSE stream
+          GLM-->>EX: data: {delta: "..."}
+          EX-->>CB: data: {delta: "..."}
+          CB->>CB: updateLastMessage(chunk)
+          CB-->>U: append to assistant bubble
+        end
+        GLM-->>EX: data: [DONE]
+        EX-->>CB: data: [DONE]
+        CB->>CB: setChatLoading(false)
+
+  - id: git-context
+    type: commits
+    title: "Recent Commits"
+    notes: "The git context is loaded from /api/git using simple-git, providing real branch and commit data."
+
+  - id: design-decisions
+    type: markdown
+    title: "Phase 1 Design Decisions"
+    notes: "Key architectural choices made in Phase 1."
+    content: |
+      ## Phase 1 Design Decisions
+
+      ### Shiki over react-syntax-highlighter
+      Shiki uses VS Code's TextMate grammar engine, producing identical output to VS Code.
+      It supports every language VS Code supports with accurate tokenization.
+
+      ### SSE Streaming for Chat
+      The LLM response streams token-by-token via Server-Sent Events.
+      `updateLastMessage()` in Zustand appends each chunk to the last message,
+      giving users immediate feedback without waiting for the full response.
+
+      ### Manifest-Driven Slides
+      `.preso/manifest.yaml` is the single source of truth. The server resolves
+      all file paths at request time, so slides always reflect the current filesystem state.
+
+      ### Local-First LLM
+      The chat sidebar talks to GLM 4.7 running at `127.0.0.1:8081` — no cloud API needed.
+      The model is OpenAI-compatible, making it easy to swap for any local model.
+
+      ### Express + Vite Proxy
+      Express handles the API layer. Vite proxies `/api/*` to Express during development.
+      This means the React app has zero CORS issues and the server can be replaced independently.
+
+      ## Open Questions
+      - Should the manifest be auto-generated from the repo structure?
+      - How should multi-repo presentations work?
+      - Export to static HTML for sharing?

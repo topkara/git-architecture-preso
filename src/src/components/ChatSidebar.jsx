@@ -1,128 +1,186 @@
-import { useState, useRef, useEffect } from 'react';
-import { usePresentationStore } from '../store/usePresentationStore';
-import { Send, Bot, User, Loader, X, RotateCcw } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { usePresentationStore } from '../store/usePresentationStore'
+import { Send, Bot, User, Loader, X, RotateCcw, AlertCircle } from 'lucide-react'
 
-// Simulated Claude responses keyed by topic keywords
-const CANNED_RESPONSES = {
-  streaming: `Good question! For streaming endpoints, bypassing the cache entirely is usually the right call. Here's why:
-
-1. **Streaming responses are ephemeral** — they're designed for real-time delivery, not storage.
-2. **Cache keys would need to be invalidated mid-stream**, which is complex.
-3. For repeated identical prompts, consider a \`non-streaming\` cache layer upstream.
-
-**Recommendation**: Add a \`?cache=false\` flag that streaming clients set automatically, and skip cache lookup for those requests.`,
-
-  rate: `For per-tenant rate limiting with model-specific caps, I'd suggest a **token bucket algorithm** per (tenant_id, model) composite key:
-
-\`\`\`python
-key = f"ratelimit:{tenant_id}:{model}"
-tokens = redis.get(key) or LIMIT
-if tokens < request.estimated_tokens:
-    raise RateLimitError(retry_after=bucket.refill_in)
-redis.decrby(key, request.estimated_tokens)
-\`\`\`
-
-Store limits in a config table so they can be updated without redeploys.`,
-
-  auth: `JWT validation at the gateway edge is a solid choice. A few things to watch:
-
-- **Rotation**: rotate signing keys on a schedule. Store them in a KV with version tags.
-- **Claims caching**: parse and cache the decoded payload for the token's lifetime (sub, exp, tenant_id) to avoid repeated signature verification.
-- **Downstream trust**: use mTLS between services in the same cluster rather than token forwarding.`,
-
-  cache: `For the request-level cache design:
-
-- **Key**: \`sha256(model + sorted(messages))\` — sort message roles to catch equivalent orderings.
-- **TTL**: 5 min is fine for most completions, but consider a **semantic similarity** threshold cache for longer-lived content.
-- **Invalidation**: Tag responses with model version. When you upgrade a model, flush by tag rather than globally.`,
-
-  default: `That's an interesting design consideration. Based on the current architecture I can see in your repo:
-
-The gateway is well-positioned to handle cross-cutting concerns like auth, caching, and routing. For iteration 2, I'd focus on making the routing table **data-driven** — moving it out of code and into a config store (etcd or Consul work well here).
-
-This way, adding a new model backend is a config change, not a deploy. Want me to sketch out what that config schema might look like?`,
-};
-
-function getResponse(message) {
-  const lower = message.toLowerCase();
-  if (lower.includes('stream')) return CANNED_RESPONSES.streaming;
-  if (lower.includes('rate') || lower.includes('limit')) return CANNED_RESPONSES.rate;
-  if (lower.includes('auth') || lower.includes('jwt') || lower.includes('token')) return CANNED_RESPONSES.auth;
-  if (lower.includes('cache') || lower.includes('cach')) return CANNED_RESPONSES.cache;
-  return CANNED_RESPONSES.default;
-}
+const STARTER_PROMPTS = [
+  'Explain the architecture on this slide.',
+  'What are the trade-offs in this design?',
+  'How could this be improved?',
+  'What are potential failure points?',
+]
 
 function MessageBubble({ msg }) {
-  const isUser = msg.role === 'user';
+  const isUser = msg.role === 'user'
   return (
     <div className={`chat-message ${isUser ? 'user' : 'assistant'}`}>
       <div className="chat-avatar">
         {isUser ? <User size={14} /> : <Bot size={14} />}
       </div>
       <div className="chat-bubble">
-        {msg.role === 'assistant' ? (
-          <pre className="chat-text markdown-pre">{msg.content}</pre>
-        ) : (
+        {isUser ? (
           <p className="chat-text">{msg.content}</p>
+        ) : (
+          <pre className="chat-text markdown-pre">{msg.content || ' '}</pre>
         )}
       </div>
     </div>
-  );
+  )
 }
 
-const STARTER_PROMPTS = [
-  'Should streaming bypass the cache?',
-  'How to handle per-tenant rate limits?',
-  'Best practices for JWT at the gateway?',
-  'Explain the cache key design.',
-];
+async function streamChat({ messages, slideTitle, slideType, onChunk, onDone, onError, signal }) {
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages,
+      slide_context: slideTitle,
+      slide_type: slideType,
+    }),
+    signal,
+  })
 
-export default function ChatSidebar({ slideTitle }) {
-  const { chatMessages, chatLoading, sidebarOpen, addMessage, setChatLoading, clearChat, toggleSidebar } = usePresentationStore();
-  const [input, setInput] = useState('');
-  const bottomRef = useRef(null);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+    throw new Error(err.error || `HTTP ${res.status}`)
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    // Process complete SSE lines from buffer
+    const lines = buffer.split('\n')
+    buffer = lines.pop() // keep incomplete line
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6).trim()
+      if (data === '[DONE]') {
+        onDone()
+        return
+      }
+      try {
+        const parsed = JSON.parse(data)
+        const delta = parsed.choices?.[0]?.delta?.content
+        if (delta) onChunk(delta)
+      } catch {
+        // ignore malformed SSE chunks
+      }
+    }
+  }
+  onDone()
+}
+
+export default function ChatSidebar({ slideTitle, slideType }) {
+  const {
+    chatMessages,
+    chatLoading,
+    sidebarOpen,
+    addMessage,
+    updateLastMessage,
+    setChatLoading,
+    clearChat,
+    toggleSidebar,
+  } = usePresentationStore()
+
+  const [input, setInput] = useState('')
+  const [error, setError] = useState(null)
+  const bottomRef = useRef(null)
+  const abortRef = useRef(null)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, chatLoading]);
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages, chatLoading])
 
-  const send = async (text) => {
-    const msg = (text || input).trim();
-    if (!msg || chatLoading) return;
-    setInput('');
-    addMessage('user', msg);
-    setChatLoading(true);
-    await new Promise((r) => setTimeout(r, 900 + Math.random() * 600));
-    addMessage('assistant', getResponse(msg));
-    setChatLoading(false);
-  };
+  // Cancel in-flight request on unmount
+  useEffect(() => () => abortRef.current?.abort(), [])
 
-  if (!sidebarOpen) return null;
+  const send = useCallback(async (text) => {
+    const msg = (text || input).trim()
+    if (!msg || chatLoading) return
+
+    setInput('')
+    setError(null)
+    addMessage('user', msg)
+    setChatLoading(true)
+
+    // Start an empty assistant message that we'll stream into
+    addMessage('assistant', '')
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    const conversationMessages = [
+      ...chatMessages,
+      { role: 'user', content: msg },
+    ].map(({ role, content }) => ({ role, content }))
+
+    try {
+      await streamChat({
+        messages: conversationMessages,
+        slideTitle,
+        slideType,
+        onChunk: (chunk) => updateLastMessage(chunk),
+        onDone: () => setChatLoading(false),
+        onError: (err) => {
+          setError(err.message)
+          setChatLoading(false)
+        },
+        signal: controller.signal,
+      })
+    } catch (err) {
+      if (err.name === 'AbortError') return
+      setError(err.message)
+      setChatLoading(false)
+    }
+  }, [input, chatLoading, chatMessages, slideTitle, slideType, addMessage, updateLastMessage, setChatLoading])
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    send()
+  }
+
+  if (!sidebarOpen) return null
 
   return (
     <aside className="chat-sidebar">
       <div className="chat-header">
         <Bot size={18} />
         <span>Design Chat</span>
-        <span className="chat-context-label">{slideTitle}</span>
-        <button className="icon-btn" onClick={clearChat} title="Clear chat"><RotateCcw size={14} /></button>
-        <button className="icon-btn" onClick={toggleSidebar} title="Close"><X size={14} /></button>
+        {slideTitle && <span className="chat-context-label">{slideTitle}</span>}
+        <button className="icon-btn" onClick={clearChat} title="Clear chat">
+          <RotateCcw size={14} />
+        </button>
+        <button className="icon-btn" onClick={toggleSidebar} title="Close">
+          <X size={14} />
+        </button>
       </div>
 
       <div className="chat-messages">
-        {chatMessages.length === 0 && (
+        {chatMessages.length === 0 && !chatLoading && (
           <div className="chat-welcome">
             <Bot size={32} />
             <p>Ask me anything about the architecture shown on this slide.</p>
             <div className="starter-prompts">
               {STARTER_PROMPTS.map((p) => (
-                <button key={p} className="starter-btn" onClick={() => send(p)}>{p}</button>
+                <button key={p} className="starter-btn" onClick={() => send(p)}>
+                  {p}
+                </button>
               ))}
             </div>
           </div>
         )}
-        {chatMessages.map((m) => <MessageBubble key={m.id} msg={m} />)}
-        {chatLoading && (
+
+        {chatMessages.map((m) => (
+          <MessageBubble key={m.id} msg={m} />
+        ))}
+
+        {chatLoading && chatMessages[chatMessages.length - 1]?.role !== 'assistant' && (
           <div className="chat-message assistant">
             <div className="chat-avatar"><Bot size={14} /></div>
             <div className="chat-bubble loading">
@@ -131,10 +189,18 @@ export default function ChatSidebar({ slideTitle }) {
             </div>
           </div>
         )}
+
+        {error && (
+          <div className="chat-error">
+            <AlertCircle size={14} />
+            <span>{error}</span>
+          </div>
+        )}
+
         <div ref={bottomRef} />
       </div>
 
-      <form className="chat-input-row" onSubmit={(e) => { e.preventDefault(); send(); }}>
+      <form className="chat-input-row" onSubmit={handleSubmit}>
         <input
           className="chat-input"
           value={input}
@@ -142,10 +208,14 @@ export default function ChatSidebar({ slideTitle }) {
           placeholder="Ask about this slide…"
           disabled={chatLoading}
         />
-        <button type="submit" className="send-btn" disabled={!input.trim() || chatLoading}>
+        <button
+          type="submit"
+          className="send-btn"
+          disabled={!input.trim() || chatLoading}
+        >
           <Send size={16} />
         </button>
       </form>
     </aside>
-  );
+  )
 }

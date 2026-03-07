@@ -1,0 +1,29 @@
+{
+  "name": "git-architecture-preso",
+  "version": "0.1.0",
+  "description": "Git-native interactive presentation tool for software architects",
+  "type": "module",
+  "bin": {
+    "preso": "./bin/preso.js"
+  },
+  "scripts": {
+    "serve": "node bin/preso.js serve",
+    "test": "vitest run --reporter=verbose",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "concurrently": "^9.1.2",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "js-yaml": "^4.1.0",
+    "open": "^10.1.0",
+    "simple-git": "^3.27.0",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0",
+    "vitest": "^3.1.4"
+  }
+}

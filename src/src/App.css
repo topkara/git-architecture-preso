@@ -425,3 +425,115 @@ html, body, #root {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ─── App Loading / Error States ─────────────────────── */
+
+.app-loading, .app-error {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; height: 100vh; gap: 16px;
+  color: var(--text-muted);
+}
+.app-error h2 { color: var(--red); font-size: 18px; }
+.app-error p { font-size: 14px; max-width: 460px; text-align: center; }
+.app-error .error-hint { color: var(--text-muted); font-size: 13px; }
+.app-error code { background: var(--bg-3); padding: 1px 6px; border-radius: 4px; font-family: var(--font-mono); }
+.app-error button {
+  margin-top: 8px; padding: 8px 20px; background: var(--accent); color: #fff;
+  border: none; border-radius: 8px; cursor: pointer; font-size: 14px;
+}
+
+.loading-spinner {
+  width: 36px; height: 36px; border: 3px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ─── CodeView (Shiki) ────────────────────────────────── */
+
+.code-view { display: flex; flex-direction: column; gap: 12px; }
+
+.code-file-panel {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; background: #0d1117;
+}
+.code-file-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; background: var(--bg-3);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer; user-select: none;
+}
+.code-file-header:hover { background: var(--border); }
+.code-file-chevron { color: var(--text-muted); display: flex; }
+.code-file-name { font-family: var(--font-mono); font-size: 12px; color: var(--text); flex: 1; }
+.code-lang-badge {
+  font-size: 10px; padding: 2px 6px; border-radius: 4px;
+  background: var(--bg); color: var(--text-muted); text-transform: uppercase;
+}
+.code-copy-btn {
+  background: transparent; border: none; color: var(--text-muted);
+  cursor: pointer; padding: 2px; display: flex; align-items: center;
+  border-radius: 4px; transition: color 0.15s;
+}
+.code-copy-btn:hover { color: var(--accent); }
+
+.code-view-body { background: #0d1117; }
+.code-view-body pre { margin: 0 !important; border-radius: 0 !important; font-size: 13px !important; }
+.code-view-body .shiki { margin: 0 !important; padding: 14px 0 !important; background: transparent !important; }
+.code-view-body .line { padding: 0 14px; display: block; line-height: 1.6; }
+.code-view-body .line[data-highlighted] { background: rgba(99,102,241,0.12); border-left: 2px solid var(--accent); }
+
+.code-view-loading .code-shimmer {
+  background: linear-gradient(90deg, var(--bg-3) 25%, var(--border) 50%, var(--bg-3) 75%);
+  background-size: 200% 100%; animation: shimmer 1.5s infinite;
+  border-radius: var(--radius);
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+.code-view-error pre { background: var(--bg-3); padding: 14px; border-radius: var(--radius); font-size: 13px; overflow: auto; }
+
+/* Multi-file tabs */
+.code-tab-container { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: #0d1117; }
+.code-tabs {
+  display: flex; align-items: center; gap: 2px;
+  padding: 6px 8px 0; background: var(--bg-3); border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.code-tab {
+  background: transparent; border: none; color: var(--text-muted);
+  padding: 6px 14px; font-size: 12px; font-family: var(--font-mono);
+  cursor: pointer; border-radius: 6px 6px 0 0; white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+.code-tab.active { color: var(--text); border-bottom-color: var(--accent); background: rgba(99,102,241,0.1); }
+.code-tab:hover:not(.active) { color: var(--text); background: var(--border); }
+.code-tab-spacer { flex: 1; }
+.code-tab-path { font-size: 11px; color: var(--text-muted); padding: 4px 14px; background: var(--bg-2); font-family: var(--font-mono); }
+
+/* ─── MermaidView ─────────────────────────────────────── */
+
+.mermaid-view { display: flex; flex-direction: column; gap: 12px; }
+.mermaid-container { display: flex; justify-content: center; align-items: flex-start; min-height: 200px; }
+.mermaid-container svg { max-width: 100%; height: auto; }
+.mermaid-container.rendering { opacity: 0.5; }
+.mermaid-container.rendered { opacity: 1; transition: opacity 0.2s; }
+.mermaid-empty, .mermaid-error { color: var(--text-muted); font-size: 13px; padding: 16px; }
+.mermaid-error { color: var(--red); }
+.mermaid-error pre { font-size: 12px; margin-top: 8px; padding: 8px; background: var(--bg-3); border-radius: 6px; }
+
+/* ─── Slide Notes ─────────────────────────────────────── */
+
+.slide-notes {
+  margin-top: 12px; padding: 10px 14px; background: var(--bg-3);
+  border-left: 3px solid var(--accent-2); border-radius: 0 6px 6px 0;
+  font-size: 13px; color: var(--text-muted);
+}
+.notes-label { font-weight: 600; color: var(--accent-2); margin-right: 6px; }
+
+/* ─── Chat Error ──────────────────────────────────────── */
+
+.chat-error {
+  display: flex; align-items: center; gap: 8px;
+  margin: 8px 12px; padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 6px; font-size: 12px; color: var(--red);
+}
